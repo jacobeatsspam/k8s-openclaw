@@ -47,7 +47,6 @@ jobs:
     outputs:
       charts: ${{ steps.charts.outputs.charts }}
       image: ${{ steps.charts.outputs.image }}
-      image_exists: ${{ steps.artifacts.outputs.image_exists }}
       openclaw_ref: ${{ steps.charts.outputs.openclaw_ref }}
       openclaw_tag: ${{ steps.charts.outputs.openclaw_tag }}
     steps:
@@ -179,25 +178,6 @@ jobs:
 
           git fetch origin gh-pages:refs/remotes/origin/gh-pages
 
-      - name: Inspect existing release artifacts
-        id: artifacts
-        run: |
-          image="${{ steps.charts.outputs.image }}"
-
-          if docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
-            image_exists=true
-          else
-            image_exists=false
-          fi
-
-          echo "image_exists=$image_exists" >> "$GITHUB_OUTPUT"
-
-          if [[ "$image_exists" == "true" && ("${{ github.event_name }}" != "workflow_dispatch" || "${{ inputs.repair_existing }}" != "true") ]]; then
-            echo "::error::Container image already published: $image"
-            echo "Bump helm/Chart.yaml appVersion before publishing a new image."
-            exit 1
-          fi
-
       - name: Refuse existing chart packages
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.repair_existing }}
         run: |
@@ -215,7 +195,6 @@ jobs:
   image:
     name: OpenClaw Image
     needs: preflight
-    if: ${{ needs.preflight.outputs.image_exists != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
