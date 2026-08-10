@@ -102,7 +102,7 @@ service:
 openclaw:
   image:
     # -- Configure OpenClaw image repository.
-    repository: ""
+    repository: "ghcr.io/jacobeatsspam/k8s-openclaw"
     # -- Configure OpenClaw image tag, defaults to .Chart.AppVersion.
     tag: ""
     # -- Configure OpenClaw image pull policy.
