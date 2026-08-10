@@ -87,52 +87,56 @@ jobs:
       - name: Discover charts
         id: charts
         run: |
+          chart_file="${CHART_ROOT}/Chart.yaml"
+
+          if [[ ! -f "$chart_file" ]]; then
+            echo "::error::No Helm charts found under $CHART_ROOT."
+            exit 1
+          fi
+
           charts_json="[]"
+          chart_path="${chart_file%/Chart.yaml}"
+          chart_name="$(awk -F': *' '$1 == "name" { gsub(/^["'\'' ]+|["'\'' ]+$/, "", $2); print $2; exit }' "$chart_file")"
+          chart_version="$(awk -F': *' '$1 == "version" { gsub(/^["'\'' ]+|["'\'' ]+$/, "", $2); print $2; exit }' "$chart_file")"
+          app_version="$(awk -F': *' '$1 == "appVersion" { gsub(/^["'\'' ]+|["'\'' ]+$/, "", $2); print $2; exit }' "$chart_file")"
 
-          while IFS= read -r chart_file; do
-            chart_path="${chart_file%/Chart.yaml}"
-            chart_name="$(awk -F': *' '$1 == "name" { gsub(/^["'\'' ]+|["'\'' ]+$/, "", $2); print $2; exit }' "$chart_file")"
-            chart_version="$(awk -F': *' '$1 == "version" { gsub(/^["'\'' ]+|["'\'' ]+$/, "", $2); print $2; exit }' "$chart_file")"
-            app_version="$(awk -F': *' '$1 == "appVersion" { gsub(/^["'\'' ]+|["'\'' ]+$/, "", $2); print $2; exit }' "$chart_file")"
+          if [[ -z "$chart_name" ]]; then
+            echo "::error file=$chart_file::name is required"
+            exit 1
+          fi
 
-            if [[ -z "$chart_name" ]]; then
-              echo "::error file=$chart_file::name is required"
-              exit 1
-            fi
+          if [[ -z "$chart_version" ]]; then
+            echo "::error file=$chart_file::version is required"
+            exit 1
+          fi
 
-            if [[ -z "$chart_version" ]]; then
-              echo "::error file=$chart_file::version is required"
-              exit 1
-            fi
+          if [[ -z "$app_version" ]]; then
+            echo "::error file=$chart_file::appVersion is required"
+            exit 1
+          fi
 
-            if [[ -z "$app_version" ]]; then
-              echo "::error file=$chart_file::appVersion is required"
-              exit 1
-            fi
+          openclaw_tag="$app_version"
+          if [[ "$app_version" == v* ]]; then
+            openclaw_ref="$app_version"
+          else
+            openclaw_ref="v${app_version}"
+          fi
 
-            openclaw_tag="$app_version"
-            if [[ "$app_version" == v* ]]; then
-              openclaw_ref="$app_version"
-            else
-              openclaw_ref="v${app_version}"
-            fi
+          if [[ ! "$app_version" =~ ^v?[0-9]+[.][0-9]+[.][0-9]+([-._][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error file=$chart_file::appVersion must identify an OpenClaw release, for example v2026.7.1-2 or 2026.7.1-2"
+            exit 1
+          fi
 
-            if [[ ! "$app_version" =~ ^v?[0-9]+[.][0-9]+[.][0-9]+([-._][0-9A-Za-z.-]+)?$ ]]; then
-              echo "::error file=$chart_file::appVersion must identify an OpenClaw release, for example v2026.7.1-2 or 2026.7.1-2"
-              exit 1
-            fi
-
-            charts_json="$(
-              jq -c \
-                --arg app_version "$app_version" \
-                --arg name "$chart_name" \
-                --arg package "${chart_name}-${chart_version}.tgz" \
-                --arg path "$chart_path" \
-                --arg version "$chart_version" \
-                '. + [{appVersion: $app_version, name: $name, package: $package, path: $path, version: $version}]' \
-                <<< "$charts_json"
-            )"
-          done < <(find "$CHART_ROOT" -maxdepth 1 -name Chart.yaml | sort)
+          charts_json="$(
+            jq -c \
+              --arg app_version "$app_version" \
+              --arg name "$chart_name" \
+              --arg package "${chart_name}-${chart_version}.tgz" \
+              --arg path "$chart_path" \
+              --arg version "$chart_version" \
+              '. + [{appVersion: $app_version, name: $name, package: $package, path: $path, version: $version}]' \
+              <<< "$charts_json"
+          )"
 
           if [[ "$charts_json" == "[]" ]]; then
             echo "::error::No Helm charts found under $CHART_ROOT."
