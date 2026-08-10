@@ -1,0 +1,238 @@
+name: Continuous Integration
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CHART_ROOT: helm
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  OPENCLAW_EXTENSIONS: diffs,lobster,google-meet
+  OPENCLAW_IMAGE_APT_PACKAGES: >-
+    bash build-essential ca-certificates ccache chromium clang-tools cmake curl
+    dnsutils ffmpeg fonts-liberation fonts-noto-color-emoji gh git gnupg
+    hostname iproute2 iputils-ping jq libsqlite3-dev lsof make novnc openssl
+    pipx procps ripgrep rsync socat tmux unzip websockify x11vnc xvfb
+  OPENCLAW_INSTALL_BROWSER: "1"
+  OPENCLAW_INSTALL_DOCKER_CLI: "1"
+  OPENCLAW_DOCKER_BUILD_NODE_OPTIONS: --max-old-space-size=8192
+  OPENCLAW_DOCKER_BUILD_SKIP_DTS: "1"
+
+jobs:
+  preflight:
+    name: CI Preflight
+    runs-on: ubuntu-latest
+    outputs:
+      charts: ${{ steps.charts.outputs.charts }}
+      openclaw_ref: ${{ steps.charts.outputs.openclaw_ref }}
+      openclaw_tag: ${{ steps.charts.outputs.openclaw_tag }}
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v7
+
+      - name: Discover charts
+        id: charts
+        run: |
+          charts_json="[]"
+
+          while IFS= read -r chart_file; do
+            chart_path="${chart_file%/Chart.yaml}"
+            chart_name="$(awk -F': *' '$1 == "name" { gsub(/^["'\'' ]+|["'\'' ]+$/, "", $2); print $2; exit }' "$chart_file")"
+            chart_version="$(awk -F': *' '$1 == "version" { gsub(/^["'\'' ]+|["'\'' ]+$/, "", $2); print $2; exit }' "$chart_file")"
+            app_version="$(awk -F': *' '$1 == "appVersion" { gsub(/^["'\'' ]+|["'\'' ]+$/, "", $2); print $2; exit }' "$chart_file")"
+
+            if [[ -z "$chart_name" ]]; then
+              echo "::error file=$chart_file::name is required"
+              exit 1
+            fi
+
+            if [[ -z "$chart_version" ]]; then
+              echo "::error file=$chart_file::version is required"
+              exit 1
+            fi
+
+            if [[ -z "$app_version" ]]; then
+              echo "::error file=$chart_file::appVersion is required"
+              exit 1
+            fi
+
+            openclaw_tag="$app_version"
+            if [[ "$app_version" == v* ]]; then
+              openclaw_ref="$app_version"
+            else
+              openclaw_ref="v${app_version}"
+            fi
+
+            if [[ ! "$app_version" =~ ^v?[0-9]+[.][0-9]+[.][0-9]+([-._][0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error file=$chart_file::appVersion must identify an OpenClaw release, for example v2026.7.1-2 or 2026.7.1-2"
+              exit 1
+            fi
+
+            charts_json="$(
+              jq -c \
+                --arg app_version "$app_version" \
+                --arg name "$chart_name" \
+                --arg package "${chart_name}-${chart_version}.tgz" \
+                --arg path "$chart_path" \
+                --arg version "$chart_version" \
+                '. + [{appVersion: $app_version, name: $name, package: $package, path: $path, version: $version}]' \
+                <<< "$charts_json"
+            )"
+          done < <(find "$CHART_ROOT" -maxdepth 1 -name Chart.yaml | sort)
+
+          if [[ "$charts_json" == "[]" ]]; then
+            echo "::error::No Helm charts found under $CHART_ROOT."
+            exit 1
+          fi
+
+          echo "charts=$charts_json" >> "$GITHUB_OUTPUT"
+          echo "openclaw_ref=$openclaw_ref" >> "$GITHUB_OUTPUT"
+          echo "openclaw_tag=$openclaw_tag" >> "$GITHUB_OUTPUT"
+
+  image:
+    name: OpenClaw Image
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v7
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          docker system prune -af || true
+
+      - name: Derive short commit SHA
+        id: git
+        run: |
+          echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Docker metadata mapping
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ needs.preflight.outputs.openclaw_tag }},enable={{is_default_branch}}
+            type=raw,value=${{ needs.preflight.outputs.openclaw_tag }}-sha-${{ steps.git.outputs.short_sha }},enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha
+          labels: |
+            org.opencontainers.image.version=${{ needs.preflight.outputs.openclaw_tag }}
+
+      - name: Generate Docker Bake file
+        run: |
+          tags_json="$(printf '%s\n' "${DOCKER_METADATA_OUTPUT_TAGS}" | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+          labels_json="$(printf '%s\n' "${DOCKER_METADATA_OUTPUT_LABELS}" | jq -R -s -c '
+            split("\n")
+            | map(select(length > 0))
+            | map(capture("(?<key>[^=]+)=(?<value>.*)"))
+            | from_entries
+          ')"
+
+          cat > /tmp/docker-bake.hcl <<EOF
+          group "default" {
+            targets = ["docker-openclaw"]
+          }
+
+          target "openclaw-upstream" {
+            context = "https://github.com/openclaw/openclaw.git#${{ needs.preflight.outputs.openclaw_ref }}"
+            dockerfile = "Dockerfile"
+            platforms = ["linux/amd64"]
+            args = {
+              OPENCLAW_EXTENSIONS = "${OPENCLAW_EXTENSIONS}"
+              OPENCLAW_IMAGE_APT_PACKAGES = "${OPENCLAW_IMAGE_APT_PACKAGES}"
+              OPENCLAW_INSTALL_BROWSER = "${OPENCLAW_INSTALL_BROWSER}"
+              OPENCLAW_INSTALL_DOCKER_CLI = "${OPENCLAW_INSTALL_DOCKER_CLI}"
+              OPENCLAW_DOCKER_BUILD_NODE_OPTIONS = "${OPENCLAW_DOCKER_BUILD_NODE_OPTIONS}"
+              OPENCLAW_DOCKER_BUILD_SKIP_DTS = "${OPENCLAW_DOCKER_BUILD_SKIP_DTS}"
+            }
+            cache-from = ["type=gha,scope=openclaw-upstream-amd64"]
+            cache-to = ["type=gha,mode=max,scope=openclaw-upstream-amd64"]
+          }
+
+          target "docker-openclaw" {
+            context = "docker"
+            dockerfile = "upstream-overlay.Dockerfile"
+            contexts = {
+              upstream = "target:openclaw-upstream"
+            }
+            platforms = ["linux/amd64"]
+            tags = ${tags_json}
+            labels = ${labels_json}
+            cache-from = ["type=gha,scope=docker-openclaw-amd64"]
+            cache-to = ["type=gha,mode=max,scope=docker-openclaw-amd64"]
+          }
+          EOF
+
+      - name: Build container image
+        uses: docker/bake-action@v6
+        with:
+          source: .
+          files: /tmp/docker-bake.hcl
+          targets: docker-openclaw
+          push: false
+
+  chart:
+    name: Helm Chart
+    needs: preflight
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        chart: ${{ fromJson(needs.preflight.outputs.charts) }}
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v7
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v5.0.1
+
+      - name: Lint Helm chart
+        run: |
+          helm lint "${{ matrix.chart.path }}"
+
+      - name: Test Helm chart deployment
+        run: |
+          values_file="${{ matrix.chart.path }}/ci-values.yaml"
+
+          if [[ ! -f "$values_file" ]]; then
+            echo "No ci-values.yaml found for ${{ matrix.chart.name }}; skipping install smoke test."
+            exit 0
+          fi
+
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          kind create cluster
+
+          helm upgrade --install "${{ matrix.chart.name }}" "${{ matrix.chart.path }}" \
+            --namespace chart-test-system \
+            --create-namespace \
+            --values "$values_file" \
+            --wait \
+            --timeout 5m
+
+          helm status "${{ matrix.chart.name }}" --namespace chart-test-system
+
+      - name: Package Helm chart
+        run: |
+          mkdir -p dist/charts
+          helm package "${{ matrix.chart.path }}" --destination dist/charts
+          test -f "dist/charts/${{ matrix.chart.package }}"

@@ -1,0 +1,174 @@
+global:
+  # -- Set an override for the prefix of the fullname.
+  nameOverride: ""
+  # -- Set the entire name definition.
+  fullnameOverride: ""
+  # -- Set additional global labels. Helm templates can be used.
+  labels: {}
+  # -- Set additional global annotations. Helm templates can be used.
+  annotations: {}
+  # -- Set image pull secrets.
+  # More info: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+  imagePullSecrets: []
+
+controller:
+  # -- Configure the statefulset labels. Helm templates can be used.
+  labels: {}
+  # -- Configure the statefulset annotations. Helm templates can be used.
+  annotations: {}
+  # -- ReplicaSet revision history limit.
+  revisionHistoryLimit: 3
+
+pod:
+  # -- Set pod labels. Helm templates can be used.
+  labels: {}
+  # -- Set pod annotations. Helm templates can be used.
+  annotations: {}
+
+  # -- NodeSelector is a selector which must be true for the pod to fit on a node.
+  # Selector which must match a node's labels for the pod to be scheduled on that node.
+  # More info: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+  nodeSelector: {}
+
+  # -- Affinity is a group of affinity scheduling rules.
+  # More info: https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.23/#affinity-v1-core
+  affinity: {}
+
+  # -- If specified, the pod's tolerations.
+  # More info: https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.23/#toleration-v1-core
+  tolerations: []
+
+  # -- SecurityContext holds pod-level security attributes and common container settings.
+  # Optional: Defaults to empty. See type description for default values of each field.
+  # More info: https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.23/#podsecuritycontext-v1-core
+  securityContext: {}
+    # fsGroup: 1000
+
+  # -- Grace period for OpenClaw shutdown.
+  terminationGracePeriodSeconds: 30
+
+podMonitor:
+  # -- Create the PodMonitor resource.
+  enabled: false
+  # -- Set pod labels. Helm templates can be used.
+  labels: {}
+  # -- Set pod annotations. Helm templates can be used.
+  annotations: {}
+  # -- scrape interval.
+  interval: "15s"
+  # -- scrape timeout.
+  timeout: "10s"
+  # -- Metrics path.
+  path: "/metrics"
+
+persistence:
+  # -- Toggle the creation of a persistent volume.
+  enabled: false
+  # -- Configure the persistence labels. Helm templates can be used.
+  labels: {}
+  # -- Configure the persistence annotations. Helm templates can be used.
+  annotations: {}
+  # -- Persistent Volume Storage Class.
+  # If defined, storageClassName: <storageClass>.
+  # If set to "-", storageClassName: "", which disables dynamic provisioning.
+  # If undefined (the default) or set to null, no storageClassName spec is
+  # set, choosing the default provisioner.  (gp2 on AWS, standard on
+  # GKE, AWS & OpenStack).
+  storageClass: ""
+  # -- The desired access modes the volume should have.
+  accessMode: "ReadWriteOnce"
+  # -- Size of the persistent volume.
+  size: "10Gi"
+  # -- Optionally mount an existing persistent volume claim.
+  existingClaim: null
+  # -- https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#persistentvolumeclaim-retention
+  retentionPolicy: {}
+
+service:
+  # -- Configure the service labels. Helm templates can be used.
+  labels: {}
+  # -- Configure the service annotations. Helm templates can be used.
+  annotations: {}
+  # -- Configure service type.
+  type: "ClusterIP"
+  # -- Configure service affinity.
+  sessionAffinity: "None"
+  # -- Optional nodePort when service.type is NodePort or LoadBalancer.
+  nodePort: null
+
+#####
+## Containers
+
+openclaw:
+  image:
+    # -- Configure OpenClaw image repository.
+    repository: ""
+    # -- Configure OpenClaw image tag, defaults to .Chart.AppVersion.
+    tag: ""
+    # -- Configure OpenClaw image pull policy.
+    pullPolicy: "IfNotPresent"
+  # -- Configure the Security Context.
+  securityContext: {}
+  # -- Configure pod resources.
+  resources: {}
+    # limits:
+    #   cpu: 1000m
+    #   memory: 1Gi
+    # requests:
+    #   cpu: 100m
+    #   memory: 256Mi
+  ports:
+    # -- Configure the HTTP UI/API port exposed by the container.
+    http: 18789
+  # -- Override container command.
+  command: []
+  # -- Override container args.
+  args: []
+  # -- Environment variables rendered as string values. Helm templates can be used.
+  env:
+    OPENCLAW_GATEWAY_PORT: "{{ .Values.openclaw.ports.http }}"
+    OPENCLAW_ALLOWED_ORIGINS: ""
+  # -- Environment variables sourced from existing secrets or config maps.
+  envFrom: []
+    # - secretRef:
+    #     name: openclaw-secrets
+  # -- Additional env entries, useful for valueFrom secretKeyRef/configMapKeyRef items.
+  extraEnv: []
+    # - name: ANTHROPIC_API_KEY
+    #   valueFrom:
+    #     secretKeyRef:
+    #       name: openclaw-provider
+    #       key: anthropic-api-key
+  # -- Additional volume mounts for the OpenClaw container.
+  extraVolumeMounts: []
+  # -- Additional volumes for the pod.
+  extraVolumes: []
+  # -- Additional containers, such as a browser/CDP sidecar. Helm templates can be used.
+  extraContainers: []
+  probes:
+    liveness:
+      # -- Enable liveness probe.
+      enabled: true
+      # -- Liveness probe path.
+      path: "/healthz"
+      # -- Liveness initial delay seconds.
+      initialDelaySeconds: 30
+      # -- Liveness period seconds.
+      periodSeconds: 30
+      # -- Liveness timeout seconds.
+      timeoutSeconds: 5
+      # -- Liveness failure threshold.
+      failureThreshold: 5
+    readiness:
+      # -- Enable readiness probe.
+      enabled: true
+      # -- Readiness probe path.
+      path: "/readyz"
+      # -- Readiness initial delay seconds.
+      initialDelaySeconds: 10
+      # -- Readiness period seconds.
+      periodSeconds: 10
+      # -- Readiness timeout seconds.
+      timeoutSeconds: 5
+      # -- Readiness failure threshold.
+      failureThreshold: 3

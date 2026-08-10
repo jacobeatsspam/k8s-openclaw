@@ -1,0 +1,375 @@
+name: Continuous Delivery
+
+on:
+  workflow_run:
+    workflows:
+      - Continuous Integration
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      repair_existing:
+        description: Repair a partially published release by skipping artifacts that already exist
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: write
+  packages: write
+
+env:
+  CHART_ROOT: helm
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  OPENCLAW_EXTENSIONS: diffs,lobster,google-meet
+  OPENCLAW_IMAGE_APT_PACKAGES: >-
+    bash build-essential ca-certificates ccache chromium clang-tools cmake curl
+    dnsutils ffmpeg fonts-liberation fonts-noto-color-emoji gh git gnupg
+    hostname iproute2 iputils-ping jq libsqlite3-dev lsof make novnc openssl
+    pipx procps ripgrep rsync socat tmux unzip websockify x11vnc xvfb
+  OPENCLAW_INSTALL_BROWSER: "1"
+  OPENCLAW_INSTALL_DOCKER_CLI: "1"
+  OPENCLAW_DOCKER_BUILD_NODE_OPTIONS: --max-old-space-size=8192
+  OPENCLAW_DOCKER_BUILD_SKIP_DTS: "1"
+
+jobs:
+  preflight:
+    name: Release Preflight
+    runs-on: ubuntu-latest
+    outputs:
+      charts: ${{ steps.charts.outputs.charts }}
+      image: ${{ steps.charts.outputs.image }}
+      image_exists: ${{ steps.artifacts.outputs.image_exists }}
+      openclaw_ref: ${{ steps.charts.outputs.openclaw_ref }}
+      openclaw_tag: ${{ steps.charts.outputs.openclaw_tag }}
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Wait for triggering CI run
+        if: ${{ github.event_name == 'workflow_run' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ci_run_id="${{ github.event.workflow_run.id }}"
+
+          for attempt in {1..60}; do
+            status="$(gh run view "$ci_run_id" --json status --jq .status)"
+            conclusion="$(gh run view "$ci_run_id" --json conclusion --jq '.conclusion // ""')"
+
+            if [[ "$status" == "completed" ]]; then
+              if [[ "$conclusion" == "success" ]]; then
+                exit 0
+              fi
+
+              echo "::error::Triggering CI run completed with conclusion: $conclusion"
+              exit 1
+            fi
+
+            echo "Triggering CI run is $status; waiting for completion..."
+            sleep 30
+          done
+
+          echo "::error::Timed out waiting for triggering CI run $ci_run_id to complete."
+          exit 1
+
+      - name: Discover charts
+        id: charts
+        run: |
+          charts_json="[]"
+
+          while IFS= read -r chart_file; do
+            chart_path="${chart_file%/Chart.yaml}"
+            chart_name="$(awk -F': *' '$1 == "name" { gsub(/^["'\'' ]+|["'\'' ]+$/, "", $2); print $2; exit }' "$chart_file")"
+            chart_version="$(awk -F': *' '$1 == "version" { gsub(/^["'\'' ]+|["'\'' ]+$/, "", $2); print $2; exit }' "$chart_file")"
+            app_version="$(awk -F': *' '$1 == "appVersion" { gsub(/^["'\'' ]+|["'\'' ]+$/, "", $2); print $2; exit }' "$chart_file")"
+
+            if [[ -z "$chart_name" ]]; then
+              echo "::error file=$chart_file::name is required"
+              exit 1
+            fi
+
+            if [[ -z "$chart_version" ]]; then
+              echo "::error file=$chart_file::version is required"
+              exit 1
+            fi
+
+            if [[ -z "$app_version" ]]; then
+              echo "::error file=$chart_file::appVersion is required"
+              exit 1
+            fi
+
+            openclaw_tag="$app_version"
+            if [[ "$app_version" == v* ]]; then
+              openclaw_ref="$app_version"
+            else
+              openclaw_ref="v${app_version}"
+            fi
+
+            if [[ ! "$app_version" =~ ^v?[0-9]+[.][0-9]+[.][0-9]+([-._][0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error file=$chart_file::appVersion must identify an OpenClaw release, for example v2026.7.1-2 or 2026.7.1-2"
+              exit 1
+            fi
+
+            charts_json="$(
+              jq -c \
+                --arg app_version "$app_version" \
+                --arg name "$chart_name" \
+                --arg package "${chart_name}-${chart_version}.tgz" \
+                --arg path "$chart_path" \
+                --arg version "$chart_version" \
+                '. + [{appVersion: $app_version, name: $name, package: $package, path: $path, version: $version}]' \
+                <<< "$charts_json"
+            )"
+          done < <(find "$CHART_ROOT" -maxdepth 1 -name Chart.yaml | sort)
+
+          if [[ "$charts_json" == "[]" ]]; then
+            echo "::error::No Helm charts found under $CHART_ROOT."
+            exit 1
+          fi
+
+          echo "charts=$charts_json" >> "$GITHUB_OUTPUT"
+          echo "image=${REGISTRY}/${IMAGE_NAME}:${openclaw_tag}" >> "$GITHUB_OUTPUT"
+          echo "openclaw_ref=$openclaw_ref" >> "$GITHUB_OUTPUT"
+          echo "openclaw_tag=$openclaw_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Bootstrap GitHub Pages branch
+        run: |
+          if ! git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            current_branch="$(git branch --show-current)"
+            git switch --orphan gh-pages
+            git rm -rf --ignore-unmatch .
+            printf '# k8s-openclaw Helm charts\n\nThis branch is managed by GitHub Actions.\n' > README.md
+
+            git add README.md
+            git commit -m "Initialize GitHub Pages branch"
+            git push origin gh-pages
+            git switch "$current_branch"
+          fi
+
+          git fetch origin gh-pages:refs/remotes/origin/gh-pages
+
+      - name: Inspect existing release artifacts
+        id: artifacts
+        run: |
+          image="${{ steps.charts.outputs.image }}"
+
+          if docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+            image_exists=true
+          else
+            image_exists=false
+          fi
+
+          echo "image_exists=$image_exists" >> "$GITHUB_OUTPUT"
+
+          if [[ "$image_exists" == "true" && ("${{ github.event_name }}" != "workflow_dispatch" || "${{ inputs.repair_existing }}" != "true") ]]; then
+            echo "::error::Container image already published: $image"
+            echo "Bump helm/Chart.yaml appVersion before publishing a new image."
+            exit 1
+          fi
+
+      - name: Refuse existing chart packages
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.repair_existing }}
+        run: |
+          jq -c '.[]' <<< '${{ steps.charts.outputs.charts }}' | while IFS= read -r chart; do
+            chart_package="$(jq -r .package <<< "$chart")"
+            chart_path="$(jq -r .path <<< "$chart")"
+
+            if git ls-tree -r --name-only origin/gh-pages -- "$chart_package" | grep -qx "$chart_package"; then
+              echo "::error file=$chart_path/Chart.yaml::Helm chart version already published: $chart_package"
+              echo "Bump the chart version before publishing a new package."
+              exit 1
+            fi
+          done
+
+  image:
+    name: OpenClaw Image
+    needs: preflight
+    if: ${{ needs.preflight.outputs.image_exists != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          docker system prune -af || true
+
+      - name: Derive short commit SHA
+        id: git
+        run: |
+          echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata mapping
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.preflight.outputs.openclaw_tag }}
+            type=raw,value=${{ needs.preflight.outputs.openclaw_tag }}-sha-${{ steps.git.outputs.short_sha }}
+            type=sha
+          labels: |
+            org.opencontainers.image.version=${{ needs.preflight.outputs.openclaw_tag }}
+
+      - name: Generate Docker Bake file
+        run: |
+          tags_json="$(printf '%s\n' "${DOCKER_METADATA_OUTPUT_TAGS}" | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+          labels_json="$(printf '%s\n' "${DOCKER_METADATA_OUTPUT_LABELS}" | jq -R -s -c '
+            split("\n")
+            | map(select(length > 0))
+            | map(capture("(?<key>[^=]+)=(?<value>.*)"))
+            | from_entries
+          ')"
+
+          cat > /tmp/docker-bake.hcl <<EOF
+          group "default" {
+            targets = ["docker-openclaw"]
+          }
+
+          target "openclaw-upstream" {
+            context = "https://github.com/openclaw/openclaw.git#${{ needs.preflight.outputs.openclaw_ref }}"
+            dockerfile = "Dockerfile"
+            platforms = ["linux/amd64"]
+            args = {
+              OPENCLAW_EXTENSIONS = "${OPENCLAW_EXTENSIONS}"
+              OPENCLAW_IMAGE_APT_PACKAGES = "${OPENCLAW_IMAGE_APT_PACKAGES}"
+              OPENCLAW_INSTALL_BROWSER = "${OPENCLAW_INSTALL_BROWSER}"
+              OPENCLAW_INSTALL_DOCKER_CLI = "${OPENCLAW_INSTALL_DOCKER_CLI}"
+              OPENCLAW_DOCKER_BUILD_NODE_OPTIONS = "${OPENCLAW_DOCKER_BUILD_NODE_OPTIONS}"
+              OPENCLAW_DOCKER_BUILD_SKIP_DTS = "${OPENCLAW_DOCKER_BUILD_SKIP_DTS}"
+            }
+            cache-from = ["type=gha,scope=openclaw-upstream-amd64"]
+            cache-to = ["type=gha,mode=max,scope=openclaw-upstream-amd64"]
+          }
+
+          target "docker-openclaw" {
+            context = "docker"
+            dockerfile = "upstream-overlay.Dockerfile"
+            contexts = {
+              upstream = "target:openclaw-upstream"
+            }
+            platforms = ["linux/amd64"]
+            tags = ${tags_json}
+            labels = ${labels_json}
+            cache-from = ["type=gha,scope=docker-openclaw-amd64"]
+            cache-to = ["type=gha,mode=max,scope=docker-openclaw-amd64"]
+          }
+          EOF
+
+      - name: Build and push container image
+        uses: docker/bake-action@v6
+        with:
+          source: .
+          files: /tmp/docker-bake.hcl
+          targets: docker-openclaw
+          push: true
+
+  charts:
+    name: Helm Charts
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Bootstrap GitHub Pages branch
+        run: |
+          git fetch origin gh-pages:refs/remotes/origin/gh-pages
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v5.0.1
+
+      - name: Package Helm charts
+        id: package
+        run: |
+          mkdir -p dist/charts
+          wrote_package=false
+
+          while IFS= read -r chart; do
+            chart_path="$(jq -r .path <<< "$chart")"
+            chart_package="$(jq -r .package <<< "$chart")"
+
+            if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.repair_existing }}" == "true" ]] \
+              && git ls-tree -r --name-only origin/gh-pages -- "$chart_package" | grep -qx "$chart_package"; then
+              echo "Helm chart already published: $chart_package"
+              continue
+            fi
+
+            helm package "$chart_path" --destination dist/charts
+            test -f "dist/charts/$chart_package"
+            wrote_package=true
+          done < <(jq -c '.[]' <<< '${{ needs.preflight.outputs.charts }}')
+
+          echo "wrote_package=$wrote_package" >> "$GITHUB_OUTPUT"
+
+      - name: Publish Helm chart repo
+        if: ${{ steps.package.outputs.wrote_package == 'true' }}
+        run: |
+          repo_url="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          git worktree add gh-pages origin/gh-pages
+
+          cp dist/charts/*.tgz gh-pages/
+          if [[ -f gh-pages/index.yaml ]]; then
+            helm repo index gh-pages --url "$repo_url" --merge gh-pages/index.yaml
+          else
+            helm repo index gh-pages --url "$repo_url"
+          fi
+
+          git -C gh-pages add .
+          if git -C gh-pages diff --cached --quiet; then
+            echo "No Helm chart repository changes to publish."
+            exit 0
+          fi
+
+          git -C gh-pages commit -m "Publish Helm charts"
+          git -C gh-pages push origin HEAD:gh-pages

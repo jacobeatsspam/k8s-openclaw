@@ -1,0 +1,162 @@
+---
+apiVersion: "apps/v1"
+kind: "StatefulSet"
+metadata:
+  name: {{ include "openclaw.fullname" . | quote }}
+  {{- with (merge .Values.global.labels .Values.controller.labels (include "openclaw.labels" . | fromYaml)) }}
+  labels:
+    {{- range $k, $v := . }}
+    {{- $v = tpl $v $ }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- end }}
+  {{- with (merge .Values.global.annotations .Values.controller.annotations) }}
+  annotations:
+    {{- range $k, $v := . }}
+    {{ $k }}: {{ tpl $v $ | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  serviceName: {{ include "openclaw.fullname" . | quote }}
+  selector:
+    matchLabels: {{- include "openclaw.selectorLabels" . | nindent 6 }}
+  revisionHistoryLimit: {{ .Values.controller.revisionHistoryLimit }}
+  template:
+    metadata:
+      name: {{ include "openclaw.fullname" . | quote }}
+      {{- with (merge .Values.global.labels .Values.pod.labels (include "openclaw.labels" . | fromYaml)) }}
+      labels:
+        {{- range $k, $v := . }}
+        {{- $v = tpl $v $ }}
+        {{ $k }}: {{ $v | quote }}
+        {{- end }}
+      {{- end }}
+      {{- with (merge .Values.global.annotations .Values.pod.annotations (include "openclaw.prometheusAnnotations" . | fromYaml)) }}
+      annotations:
+        {{- range $k, $v := . }}
+        {{ $k }}: {{ tpl $v $ | quote }}
+        {{- end }}
+      {{- end }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.pod.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.pod.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.pod.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.pod.securityContext }}
+      securityContext: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.pod.terminationGracePeriodSeconds }}
+      containers:
+        - name: "openclaw"
+          {{- with .Values.openclaw.securityContext }}
+          securityContext: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: {{ print (required "openclaw.image.repository is required" .Values.openclaw.image.repository) ":" (.Values.openclaw.image.tag | default .Chart.AppVersion) | quote }}
+          imagePullPolicy: {{ .Values.openclaw.image.pullPolicy | quote }}
+          {{- with .Values.openclaw.command }}
+          command: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.openclaw.args }}
+          args: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.openclaw.resources }}
+          resources: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or .Values.openclaw.env .Values.openclaw.extraEnv }}
+          env:
+            {{- range $name, $value := .Values.openclaw.env }}
+            - name: {{ $name | quote }}
+              value: {{ tpl (toString $value) $ | quote }}
+            {{- end }}
+            {{- with .Values.openclaw.extraEnv }}
+            {{- tpl (toYaml .) $ | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          {{- with .Values.openclaw.envFrom }}
+          envFrom: {{- tpl (toYaml .) $ | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: "http"
+              containerPort: {{ .Values.openclaw.ports.http }}
+          {{- if .Values.openclaw.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.openclaw.probes.readiness.path | quote }}
+              port: "http"
+            initialDelaySeconds: {{ .Values.openclaw.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.openclaw.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.openclaw.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.openclaw.probes.readiness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.openclaw.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.openclaw.probes.liveness.path | quote }}
+              port: "http"
+            initialDelaySeconds: {{ .Values.openclaw.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.openclaw.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.openclaw.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.openclaw.probes.liveness.failureThreshold }}
+          {{- end }}
+          volumeMounts:
+            - name: "data"
+              mountPath: "/home/node/.openclaw"
+            {{- with .Values.openclaw.extraVolumeMounts }}
+            {{- tpl (toYaml .) $ | nindent 12 }}
+            {{- end }}
+        {{- with .Values.openclaw.extraContainers }}
+        {{- tpl (toYaml .) $ | nindent 8 }}
+        {{- end }}
+      {{- if or (not .Values.persistence.enabled) .Values.persistence.existingClaim .Values.openclaw.extraVolumes }}
+      volumes:
+        {{- if not .Values.persistence.enabled }}
+        - name: "data"
+          emptyDir: {}
+        {{- else if .Values.persistence.existingClaim }}
+        - name: "data"
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim }}
+        {{- end }}
+        {{- with .Values.openclaw.extraVolumes }}
+        {{- tpl (toYaml .) $ | nindent 8 }}
+        {{- end }}
+      {{- end }}
+  {{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
+  volumeClaimTemplates:
+    -
+      metadata:
+        name: "data"
+        {{- with (merge .Values.global.labels .Values.persistence.labels (include "openclaw.labels" . | fromYaml)) }}
+        labels:
+          {{- range $k, $v := . }}
+          {{- $v = tpl $v $ }}
+          {{ $k }}: {{ $v | quote }}
+          {{- end }}
+        {{- end }}
+        {{- with (merge .Values.global.annotations .Values.persistence.annotations) }}
+        annotations:
+          {{- range $k, $v := . }}
+          {{ $k }}: {{ tpl $v $ | quote }}
+          {{- end }}
+        {{- end }}
+      spec:
+        accessModes:
+          - {{ .Values.persistence.accessMode | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size | quote }}
+        {{- with .Values.persistence.storageClass }}
+        storageClassName: {{ quote . }}
+        {{- end }}
+  {{- with .Values.persistence.retentionPolicy }}
+  persistentVolumeClaimRetentionPolicy: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
