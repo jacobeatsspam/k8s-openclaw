@@ -108,10 +108,7 @@ RUN set -exuo pipefail \
 	&& pnpm install -g --child-concurrency=1 --allow-build=better-sqlite3 --allow-build=node-llama-cpp @tobilu/qmd \
 	&& pnpm install -g --child-concurrency=1 --allow-build=protobufjs @steipete/summarize \
 	&& pnpm install -g --child-concurrency=1 clawhub \
-	&& pnpm install -g --child-concurrency=1 @google/gemini-cli \
-	&& pnpm install -g --child-concurrency=1 @openclaw/codex \
-	&& pnpm install -g --child-concurrency=1 @openclaw/whatsapp \
-	&& pnpm install -g --child-concurrency=1 @openclaw/searxng-plugin
+	&& pnpm install -g --child-concurrency=1 @google/gemini-cli
 
 RUN set -exuo pipefail \
 	&& pipx install "git+https://github.com/truenas/api_client.git@TS-25.10.3" \
@@ -123,15 +120,18 @@ RUN set -exuo pipefail \
 	&& tmpdir="$(mktemp -d)" \
 	&& curl -fsSL "https://codeload.github.com/rtk-ai/rtk/tar.gz/refs/tags/v0.44.1" -o "$tmpdir/rtk.tar.gz" \
 	&& tar -xzf "$tmpdir/rtk.tar.gz" -C "$tmpdir" \
-	&& install -d -m 0755 /app/extensions/rtk-rewrite \
-	&& cp \
-	"$tmpdir/rtk-0.44.1/openclaw/index.ts" \
-	"$tmpdir/rtk-0.44.1/openclaw/openclaw.plugin.json" \
-	/app/extensions/rtk-rewrite/ \
-	&& chmod 0644 \
-	/app/extensions/rtk-rewrite/index.ts \
-	/app/extensions/rtk-rewrite/openclaw.plugin.json \
+	&& PATH="/usr/local/bin:${PATH}" bun build "$tmpdir/rtk-0.44.1/openclaw/index.ts" --outdir "$tmpdir/rtk-0.44.1/openclaw" --format esm --target node \
+	&& jq '.type="module" | .main="index.js" | .openclaw.extensions=["./index.js"]' \
+		"$tmpdir/rtk-0.44.1/openclaw/package.json" \
+		> "$tmpdir/rtk-0.44.1/openclaw/package.json.tmp" \
+	&& mv "$tmpdir/rtk-0.44.1/openclaw/package.json.tmp" "$tmpdir/rtk-0.44.1/openclaw/package.json" \
+	&& node openclaw.mjs plugins install "$tmpdir/rtk-0.44.1/openclaw" \
 	&& rm -rf "$tmpdir"
+
+RUN set -exuo pipefail \
+	&& node openclaw.mjs plugins install @openclaw/codex \
+	&& node openclaw.mjs plugins install clawhub:@openclaw/whatsapp \
+	&& node openclaw.mjs plugins install @openclaw/searxng-plugin
 
 EXPOSE 18789
 EXPOSE 9222 5900 6080
