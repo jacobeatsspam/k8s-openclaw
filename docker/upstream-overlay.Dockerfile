@@ -109,7 +109,9 @@ RUN set -exuo pipefail \
 	&& pnpm install -g --child-concurrency=1 --allow-build=protobufjs @steipete/summarize \
 	&& pnpm install -g --child-concurrency=1 clawhub \
 	&& pnpm install -g --child-concurrency=1 @google/gemini-cli \
-	&& pnpm install -g --child-concurrency=1 @openclaw/codex
+	&& pnpm install -g --child-concurrency=1 @openclaw/codex \
+	&& pnpm install -g --child-concurrency=1 @openclaw/whatsapp \
+	&& pnpm install -g --child-concurrency=1 @openclaw/searxng-plugin
 
 RUN set -exuo pipefail \
 	&& pipx install "git+https://github.com/truenas/api_client.git@TS-25.10.3" \
@@ -121,11 +123,14 @@ RUN set -exuo pipefail \
 	&& tmpdir="$(mktemp -d)" \
 	&& curl -fsSL "https://codeload.github.com/rtk-ai/rtk/tar.gz/refs/tags/v0.44.1" -o "$tmpdir/rtk.tar.gz" \
 	&& tar -xzf "$tmpdir/rtk.tar.gz" -C "$tmpdir" \
-	&& mkdir -p "${HOME}/.openclaw/extensions/rtk-rewrite" \
+	&& install -d -m 0755 /app/extensions/rtk-rewrite \
 	&& cp \
 	"$tmpdir/rtk-0.44.1/openclaw/index.ts" \
 	"$tmpdir/rtk-0.44.1/openclaw/openclaw.plugin.json" \
-	"${HOME}/.openclaw/extensions/rtk-rewrite/" \
+	/app/extensions/rtk-rewrite/ \
+	&& chmod 0644 \
+	/app/extensions/rtk-rewrite/index.ts \
+	/app/extensions/rtk-rewrite/openclaw.plugin.json \
 	&& rm -rf "$tmpdir"
 
 EXPOSE 18789

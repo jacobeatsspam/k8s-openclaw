@@ -15,6 +15,9 @@ trap cleanup EXIT
 if [[ -f "$CONFIG_PATH" ]]; then
   jq '
     .plugins |= (. // {})
+    | .plugins.load |= (. // {})
+    | .plugins.load.paths |= (. // [])
+    | .plugins.load.paths |= if index("/app/extensions/rtk-rewrite") then . else . + ["/app/extensions/rtk-rewrite"] end
     | .plugins.entries |= (. // {})
     | .plugins.entries.diffs |= (. // {})
     | .plugins.entries.diffs |= if has("enabled") then . else . + { enabled: true } end
@@ -32,6 +35,9 @@ if [[ -f "$CONFIG_PATH" ]]; then
 else
   jq -n '{
     plugins: {
+      load: {
+        paths: ["/app/extensions/rtk-rewrite"]
+      },
       entries: {
         diffs: { enabled: true },
         lobster: { enabled: true },
