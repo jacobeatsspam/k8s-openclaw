@@ -182,7 +182,7 @@ jobs:
           EOF
 
       - name: Build container image
-        uses: docker/bake-action@v6
+        uses: docker/bake-action@v7
         with:
           source: .
           files: /tmp/docker-bake.hcl
