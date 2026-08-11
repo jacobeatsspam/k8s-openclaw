@@ -15,36 +15,18 @@ trap cleanup EXIT
 if [[ -f "$CONFIG_PATH" ]]; then
   jq '
     .plugins |= (. // {})
-    | .plugins.load |= (. // {})
-    | .plugins.load.paths |= (. // [])
-    | .plugins.load.paths |= if index("/app/extensions/rtk-rewrite") then . else . + ["/app/extensions/rtk-rewrite"] end
     | .plugins.entries |= (. // {})
-    | .plugins.entries.diffs |= (. // {})
-    | .plugins.entries.diffs |= if has("enabled") then . else . + { enabled: true } end
-    | .plugins.entries.lobster |= (. // {})
-    | .plugins.entries.lobster |= if has("enabled") then . else . + { enabled: true } end
-    | .plugins.entries["google-meet"] |= (. // {})
-    | .plugins.entries["google-meet"] |= if has("enabled") then . else . + { enabled: true } end
-    | .plugins.entries["rtk-rewrite"] |= (. // {})
-    | .plugins.entries["rtk-rewrite"] |= if has("enabled") then . else . + { enabled: true } end
     | .plugins.entries.codex |= (. // {})
     | .plugins.entries.codex |= if has("enabled") then . else . + { enabled: true } end
-    | .plugins.entries.anthropic |= (. // {})
-    | .plugins.entries.anthropic |= if has("enabled") then . else . + { enabled: true } end
+    | .plugins.entries["rtk-rewrite"] |= (. // {})
+    | .plugins.entries["rtk-rewrite"] |= if has("enabled") then . else . + { enabled: true } end
   ' "$CONFIG_PATH" > "$tmpfile"
 else
-  jq -n '{
+	jq -n '{
     plugins: {
-      load: {
-        paths: ["/app/extensions/rtk-rewrite"]
-      },
       entries: {
-        diffs: { enabled: true },
-        lobster: { enabled: true },
-        "google-meet": { enabled: true },
-        "rtk-rewrite": { enabled: true },
         codex: { enabled: true },
-        anthropic: { enabled: true }
+        "rtk-rewrite": { enabled: true }
       }
     }
   }' > "$tmpfile"

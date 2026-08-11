@@ -120,12 +120,12 @@ RUN set -exuo pipefail \
 	&& tmpdir="$(mktemp -d)" \
 	&& curl -fsSL "https://codeload.github.com/rtk-ai/rtk/tar.gz/refs/tags/v0.44.1" -o "$tmpdir/rtk.tar.gz" \
 	&& tar -xzf "$tmpdir/rtk.tar.gz" -C "$tmpdir" \
-	&& PATH="/usr/local/bin:${PATH}" bun build "$tmpdir/rtk-0.44.1/openclaw/index.ts" --outdir "$tmpdir/rtk-0.44.1/openclaw" --format esm --target node \
-	&& jq '.type="module" | .main="index.js" | .openclaw.extensions=["./index.js"]' \
-		"$tmpdir/rtk-0.44.1/openclaw/package.json" \
-		> "$tmpdir/rtk-0.44.1/openclaw/package.json.tmp" \
-	&& mv "$tmpdir/rtk-0.44.1/openclaw/package.json.tmp" "$tmpdir/rtk-0.44.1/openclaw/package.json" \
-	&& node openclaw.mjs plugins install "$tmpdir/rtk-0.44.1/openclaw" \
+	&& cp -r "$tmpdir/rtk-0.44.1/openclaw" /app/extensions/rtk-rewrite \
+	&& jq '.openclaw.extensions=["./index.ts"]' "$tmpdir/rtk-0.44.1/openclaw/package.json" > /app/extensions/rtk-rewrite/package.json \
+	&& cd /app/extensions/rtk-rewrite \
+	&& mkdir -p dist \
+	&& bun build ./index.ts --target=node --outfile=./dist/index.js \
+	&& openclaw plugins install /app/extensions/rtk-rewrite \
 	&& rm -rf "$tmpdir"
 
 RUN set -exuo pipefail \
