@@ -89,6 +89,9 @@ spec:
           ports:
             - name: "http"
               containerPort: {{ .Values.openclaw.ports.http }}
+            {{- with .Values.openclaw.extraPorts }}
+            {{- tpl (toYaml .) $ | nindent 12 }}
+            {{- end }}
           {{- if .Values.openclaw.probes.readiness.enabled }}
           readinessProbe:
             httpGet:

@@ -27,3 +27,6 @@ spec:
       {{- with .Values.service.nodePort }}
       nodePort: {{ . }}
       {{- end }}
+    {{- with .Values.service.extraPorts }}
+    {{- tpl (toYaml .) $ | nindent 4 }}
+    {{- end }}

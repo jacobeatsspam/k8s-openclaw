@@ -31,3 +31,19 @@ persistence:
   enabled: true
   size: 10Gi
 ```
+
+Expose an additional OpenClaw listener, such as a plugin port:
+
+```yaml
+openclaw:
+  extraPorts:
+    - name: talk
+      containerPort: 3478
+      protocol: TCP
+service:
+  extraPorts:
+    - name: talk
+      port: 3478
+      targetPort: talk
+      protocol: TCP
+```

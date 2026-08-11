@@ -108,6 +108,12 @@ service:
   sessionAffinity: "None"
   # -- Optional nodePort when service.type is NodePort or LoadBalancer.
   nodePort: null
+  # -- Additional service ports. Helm templates can be used.
+  extraPorts: []
+    # - name: talk
+    #   port: 3478
+    #   targetPort: talk
+    #   protocol: TCP
 
 #####
 ## Containers
@@ -133,6 +139,11 @@ openclaw:
   ports:
     # -- Configure the HTTP UI/API port exposed by the container.
     http: 18789
+  # -- Additional ports exposed by the OpenClaw container. Helm templates can be used.
+  extraPorts: []
+    # - name: talk
+    #   containerPort: 3478
+    #   protocol: TCP
   # -- Override container command.
   command: []
   # -- Override container args.
