@@ -11,6 +11,10 @@ RUN set -exuo pipefail \
 	&& chmod 0755 /usr/local/bin/docker-entrypoint
 
 RUN set -exuo pipefail \
+	&& cd /usr/local/bin \
+	&& curl -LO https://dl.k8s.io/release/v1.36.2/bin/linux/amd64/kubectl
+
+RUN set -exuo pipefail \
 	&& arch="$(dpkg --print-architecture)" \
 	&& case "$arch" in \
 		amd64) rtk_target='x86_64-unknown-linux-musl' ;; \
@@ -130,7 +134,8 @@ RUN set -exuo pipefail \
 RUN set -exuo pipefail \
 	&& node openclaw.mjs plugins install @openclaw/codex \
 	&& node openclaw.mjs plugins install clawhub:@openclaw/whatsapp \
-	&& node openclaw.mjs plugins install @openclaw/searxng-plugin
+	&& node openclaw.mjs plugins install @openclaw/searxng-plugin \
+	&& node openclaw.mjs plugins install @openclaw/nextcloud-talk
 
 EXPOSE 18789
 EXPOSE 9222 5900 6080

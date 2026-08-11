@@ -52,6 +52,17 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- end }}
 
 {{/*
+Create service account name.
+*/}}
+{{- define "openclaw.serviceAccountName" -}}
+{{- if .Values.serviceAccount.name }}
+{{- .Values.serviceAccount.name | quote }}
+{{- else }}
+{{- include "openclaw.fullname" . | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
 Prometheus annotations
 */}}
 {{- define "openclaw.prometheusAnnotations" -}}

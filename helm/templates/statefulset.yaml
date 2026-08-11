@@ -41,6 +41,9 @@ spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets: {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.serviceAccount.enabled }}
+      serviceAccountName: {{ include "openclaw.serviceAccountName" . }}
+      {{- end }}
       {{- with .Values.pod.nodeSelector }}
       nodeSelector: {{- toYaml . | nindent 8 }}
       {{- end }}

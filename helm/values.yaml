@@ -61,6 +61,19 @@ podMonitor:
   # -- Metrics path.
   path: "/metrics"
 
+serviceAccount:
+  # -- Create and bind a service account with cluster-level permissions.
+  enabled: false
+  # -- Set an explicit service account name. If empty, defaults to the chart fullname.
+  name: ""
+  # -- Configure service account annotations.
+  annotations: {}
+  # -- Attach the service account token to the pod.
+  automountServiceAccountToken: true
+  # -- ClusterRole used by the ClusterRoleBinding.
+  # Defaults to Kubernetes built-in "cluster-admin".
+  clusterRoleName: "cluster-admin"
+
 persistence:
   # -- Toggle the creation of a persistent volume.
   enabled: false
