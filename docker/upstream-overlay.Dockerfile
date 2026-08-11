@@ -122,10 +122,9 @@ RUN set -exuo pipefail \
 	&& tar -xzf "$tmpdir/rtk.tar.gz" -C "$tmpdir" \
 	&& cp -r "$tmpdir/rtk-0.44.1/openclaw" /app/extensions/rtk-rewrite \
 	&& jq '.openclaw.extensions=["./index.ts"]' "$tmpdir/rtk-0.44.1/openclaw/package.json" > /app/extensions/rtk-rewrite/package.json \
-	&& cd /app/extensions/rtk-rewrite \
-	&& mkdir -p dist \
-	&& bun build ./index.ts --target=node --outfile=./dist/index.js \
-	&& openclaw plugins install /app/extensions/rtk-rewrite \
+	&& cp -r /app/extensions/rtk-rewrite /app/dist/extensions/rtk-rewrite \
+	&& bun build /app/dist/extensions/rtk-rewrite/index.ts --target=node --outfile=/app/dist/extensions/rtk-rewrite/index.js \
+	&& rm /app/dist/extensions/rtk-rewrite/index.ts \
 	&& rm -rf "$tmpdir"
 
 RUN set -exuo pipefail \
