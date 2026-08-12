@@ -12,7 +12,8 @@ RUN set -exuo pipefail \
 
 RUN set -exuo pipefail \
 	&& cd /usr/local/bin \
-	&& curl -LO https://dl.k8s.io/release/v1.36.2/bin/linux/amd64/kubectl
+	&& curl -LO https://dl.k8s.io/release/v1.36.2/bin/linux/amd64/kubectl \
+	&& chmod 755 kubectl
 
 RUN set -exuo pipefail \
 	&& arch="$(dpkg --print-architecture)" \
