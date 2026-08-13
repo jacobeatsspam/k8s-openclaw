@@ -11,11 +11,11 @@ RUN set -exuo pipefail \
 	&& chmod 0755 /usr/local/bin/docker-entrypoint
 
 RUN set -exuo pipefail \
-	&& wget -O /usr/local/bin/kubectl https://dl.k8s.io/release/v1.36.2/bin/linux/amd64/kubectl \
+	&& curl -SLo /usr/local/bin/kubectl https://dl.k8s.io/release/v1.36.2/bin/linux/amd64/kubectl \
 	&& chmod 0755 /usr/local/bin/kubectl
 
 RUN set -exuo pipefail \
-	&& wget -O /usr/local/bin/tea https://dl.gitea.com/tea/v0.10.1/tea-v0.10.1-linux-amd64 \
+	&& curl -SLo /usr/local/bin/tea https://dl.gitea.com/tea/v0.10.1/tea-v0.10.1-linux-amd64 \
 	&& chmod 755 /usr/local/bin/tea
 
 RUN set -exuo pipefail \

@@ -9,7 +9,7 @@ target "openclaw-upstream" {
   dockerfile = "Dockerfile"
   platforms  = ["linux/amd64"]
   args = {
-    OPENCLAW_EXTENSIONS                 = "diffs,lobster,google-meet"
+    OPENCLAW_EXTENSIONS                = "diffs,lobster,google-meet"
     OPENCLAW_IMAGE_APT_PACKAGES        = "bash build-essential ca-certificates ccache chromium clang-tools cmake curl dnsutils ffmpeg fonts-liberation fonts-noto-color-emoji gh git gnupg hostname iproute2 iputils-ping jq libsqlite3-dev lsof make novnc openssh-client openssl pipx procps ripgrep rsync socat tmux unzip websockify x11vnc xvfb"
     OPENCLAW_INSTALL_BROWSER           = "1"
     OPENCLAW_INSTALL_DOCKER_CLI        = "1"

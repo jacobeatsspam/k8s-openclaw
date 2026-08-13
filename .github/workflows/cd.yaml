@@ -9,12 +9,6 @@ on:
     branches:
       - main
   workflow_dispatch:
-    inputs:
-      repair_existing:
-        description: Repair a partially published release by skipping artifacts that already exist
-        required: false
-        default: false
-        type: boolean
 
 concurrency:
   group: cd-${{ github.ref }}
@@ -36,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       charts: ${{ steps.charts.outputs.charts }}
+      helm_changed: ${{ steps.helm_changes.outputs.changed }}
       image: ${{ steps.charts.outputs.image }}
       openclaw_ref: ${{ steps.charts.outputs.openclaw_ref }}
       openclaw_tag: ${{ steps.charts.outputs.openclaw_tag }}
@@ -137,6 +132,29 @@ jobs:
           echo "openclaw_ref=$openclaw_ref" >> "$GITHUB_OUTPUT"
           echo "openclaw_tag=$openclaw_tag" >> "$GITHUB_OUTPUT"
 
+      - name: Detect Helm chart changes
+        id: helm_changes
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "Manual release requested; Helm chart publishing will be attempted."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! git rev-parse HEAD^ >/dev/null 2>&1; then
+            echo "No parent commit found; Helm chart publishing will be attempted."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff --quiet HEAD^ HEAD -- "$CHART_ROOT/"; then
+            echo "No changes under $CHART_ROOT; Helm chart publishing will be skipped."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changes found under $CHART_ROOT; Helm chart publishing will be attempted."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -168,17 +186,20 @@ jobs:
 
           git fetch origin gh-pages:refs/remotes/origin/gh-pages
 
-      - name: Refuse existing chart packages
-        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.repair_existing }}
+      - name: Check existing chart packages
         run: |
           jq -c '.[]' <<< '${{ steps.charts.outputs.charts }}' | while IFS= read -r chart; do
             chart_package="$(jq -r .package <<< "$chart")"
             chart_path="$(jq -r .path <<< "$chart")"
 
             if git ls-tree -r --name-only origin/gh-pages -- "$chart_package" | grep -qx "$chart_package"; then
-              echo "::error file=$chart_path/Chart.yaml::Helm chart version already published: $chart_package"
-              echo "Bump the chart version before publishing a new package."
-              exit 1
+              if [[ "${{ steps.helm_changes.outputs.changed }}" == "true" ]]; then
+                echo "::error file=$chart_path/Chart.yaml::Helm chart version already published: $chart_package"
+                echo "Bump the chart version before publishing Helm chart changes."
+                exit 1
+              fi
+
+              echo "::notice file=$chart_path/Chart.yaml::Helm chart version already published: $chart_package"
             fi
           done
 
@@ -266,6 +287,7 @@ jobs:
   charts:
     name: Helm Charts
     needs: preflight
+    if: ${{ needs.preflight.outputs.helm_changed == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
@@ -294,12 +316,6 @@ jobs:
           while IFS= read -r chart; do
             chart_path="$(jq -r .path <<< "$chart")"
             chart_package="$(jq -r .package <<< "$chart")"
-
-            if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.repair_existing }}" == "true" ]] \
-              && git ls-tree -r --name-only origin/gh-pages -- "$chart_package" | grep -qx "$chart_package"; then
-              echo "Helm chart already published: $chart_package"
-              continue
-            fi
 
             helm package "$chart_path" --destination dist/charts
             test -f "dist/charts/$chart_package"
