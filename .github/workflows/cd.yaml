@@ -29,16 +29,6 @@ env:
   CHART_ROOT: helm
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  OPENCLAW_EXTENSIONS: diffs,lobster,google-meet
-  OPENCLAW_IMAGE_APT_PACKAGES: >-
-    bash build-essential ca-certificates ccache chromium clang-tools cmake curl
-    dnsutils ffmpeg fonts-liberation fonts-noto-color-emoji gh git gnupg
-    hostname iproute2 iputils-ping jq libsqlite3-dev lsof make novnc openssl
-    pipx procps ripgrep rsync socat tmux unzip websockify x11vnc xvfb
-  OPENCLAW_INSTALL_BROWSER: "1"
-  OPENCLAW_INSTALL_DOCKER_CLI: "1"
-  OPENCLAW_DOCKER_BUILD_NODE_OPTIONS: --max-old-space-size=8192
-  OPENCLAW_DOCKER_BUILD_SKIP_DTS: "1"
 
 jobs:
   preflight:
@@ -237,7 +227,7 @@ jobs:
           labels: |
             org.opencontainers.image.version=${{ needs.preflight.outputs.openclaw_tag }}
 
-      - name: Generate Docker Bake file
+      - name: Generate Docker Bake override
         run: |
           tags_json="$(printf '%s\n' "${DOCKER_METADATA_OUTPUT_TAGS}" | jq -R -s -c 'split("\n") | map(select(length > 0))')"
           labels_json="$(printf '%s\n' "${DOCKER_METADATA_OUTPUT_LABELS}" | jq -R -s -c '
@@ -247,34 +237,13 @@ jobs:
             | from_entries
           ')"
 
-          cat > /tmp/docker-bake.hcl <<EOF
-          group "default" {
-            targets = ["docker-openclaw"]
-          }
-
+          cat > /tmp/docker-bake.override.hcl <<EOF
           target "openclaw-upstream" {
-            context = "https://github.com/openclaw/openclaw.git#${{ needs.preflight.outputs.openclaw_ref }}"
-            dockerfile = "Dockerfile"
-            platforms = ["linux/amd64"]
-            args = {
-              OPENCLAW_EXTENSIONS = "${OPENCLAW_EXTENSIONS}"
-              OPENCLAW_IMAGE_APT_PACKAGES = "${OPENCLAW_IMAGE_APT_PACKAGES}"
-              OPENCLAW_INSTALL_BROWSER = "${OPENCLAW_INSTALL_BROWSER}"
-              OPENCLAW_INSTALL_DOCKER_CLI = "${OPENCLAW_INSTALL_DOCKER_CLI}"
-              OPENCLAW_DOCKER_BUILD_NODE_OPTIONS = "${OPENCLAW_DOCKER_BUILD_NODE_OPTIONS}"
-              OPENCLAW_DOCKER_BUILD_SKIP_DTS = "${OPENCLAW_DOCKER_BUILD_SKIP_DTS}"
-            }
             cache-from = ["type=gha,scope=openclaw-upstream-amd64"]
             cache-to = ["type=gha,mode=max,scope=openclaw-upstream-amd64"]
           }
 
           target "docker-openclaw" {
-            context = "docker"
-            dockerfile = "upstream-overlay.Dockerfile"
-            contexts = {
-              upstream = "target:openclaw-upstream"
-            }
-            platforms = ["linux/amd64"]
             tags = ${tags_json}
             labels = ${labels_json}
             cache-from = ["type=gha,scope=docker-openclaw-amd64"]
@@ -284,9 +253,13 @@ jobs:
 
       - name: Build and push container image
         uses: docker/bake-action@v7
+        env:
+          OPENCLAW_REF: ${{ needs.preflight.outputs.openclaw_ref }}
         with:
           source: .
-          files: /tmp/docker-bake.hcl
+          files: |
+            docker/docker-bake.hcl
+            /tmp/docker-bake.override.hcl
           targets: docker-openclaw
           push: true
 
