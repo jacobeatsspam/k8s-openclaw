@@ -3,7 +3,23 @@ entries:
   openclaw:
   - apiVersion: v2
     appVersion: v2026.7.1-2
-    created: "2026-08-12T23:07:19.42382728Z"
+    created: "2026-08-13T20:16:06.656842768Z"
+    description: A Helm chart for OpenClaw
+    digest: 12cf541f2de72ccc4cd8e2af7ac5788458bea35548043c26c713193e8258ff3d
+    home: https://github.com/openclaw/openclaw
+    maintainers:
+    - name: jacobeatsspam
+      url: https://github.com/jacobeatsspam
+    name: openclaw
+    sources:
+    - https://github.com/openclaw/openclaw
+    type: application
+    urls:
+    - https://jacobeatsspam.github.io/k8s-openclaw/openclaw-0.2.3.tgz
+    version: 0.2.3
+  - apiVersion: v2
+    appVersion: v2026.7.1-2
+    created: "2026-08-13T20:16:06.656028357Z"
     description: A Helm chart for OpenClaw
     digest: d4a220a586d5466b0e250ac34001eea0a7ff3f2c1027aebfbf832324e9aa09ad
     home: https://github.com/openclaw/openclaw
@@ -19,7 +35,7 @@ entries:
     version: 0.2.2
   - apiVersion: v2
     appVersion: v2026.7.1-2
-    created: "2026-08-12T23:07:19.422719544Z"
+    created: "2026-08-13T20:16:06.655737965Z"
     description: A Helm chart for OpenClaw
     digest: 205f7cbf208eeae470504c6f82d109bd15b47b485181ebf89dfb9ac3b8a38ef8
     home: https://github.com/openclaw/openclaw
@@ -35,7 +51,7 @@ entries:
     version: 0.2.1
   - apiVersion: v2
     appVersion: v2026.7.1-2
-    created: "2026-08-12T23:07:19.421984088Z"
+    created: "2026-08-13T20:16:06.655414936Z"
     description: A Helm chart for OpenClaw
     digest: a57471a1f966819ecfcf8a238728a4114c3d2ac4c842cd8bcf55c960d62364f9
     home: https://github.com/openclaw/openclaw
@@ -51,7 +67,7 @@ entries:
     version: 0.2.0
   - apiVersion: v2
     appVersion: v2026.7.1-2
-    created: "2026-08-12T23:07:19.421506216Z"
+    created: "2026-08-13T20:16:06.655088918Z"
     description: A Helm chart for OpenClaw
     digest: ceba804f94391d8950f7a33a70a55e117e5d322f6f2a52ae7a29a26ec2eedafc
     home: https://github.com/openclaw/openclaw
@@ -67,7 +83,7 @@ entries:
     version: 0.1.8
   - apiVersion: v2
     appVersion: v2026.7.1-2
-    created: "2026-08-12T23:07:19.421044438Z"
+    created: "2026-08-13T20:16:06.65478445Z"
     description: A Helm chart for OpenClaw
     digest: feff9a43397c761214109d415f46d900568e31f614ea36f4b5f398ea1dea4204
     home: https://github.com/openclaw/openclaw
@@ -83,7 +99,7 @@ entries:
     version: 0.1.7
   - apiVersion: v2
     appVersion: v2026.7.1-2
-    created: "2026-08-12T23:07:19.420630391Z"
+    created: "2026-08-13T20:16:06.654490404Z"
     description: A Helm chart for OpenClaw
     digest: 77053e0cafbd01e0369456dbd774f5071cd458e991756e7d71a901c6b64d9963
     home: https://github.com/openclaw/openclaw
@@ -99,7 +115,7 @@ entries:
     version: 0.1.6
   - apiVersion: v2
     appVersion: v2026.7.1-2
-    created: "2026-08-12T23:07:19.42018019Z"
+    created: "2026-08-13T20:16:06.654226721Z"
     description: A Helm chart for OpenClaw
     digest: 1bbf2ca74b6cfcb3fc16e71b5e9f5cec0678ca302f0ec8436dd6b22a02a5fdb1
     home: https://github.com/openclaw/openclaw
@@ -115,7 +131,7 @@ entries:
     version: 0.1.5
   - apiVersion: v2
     appVersion: v2026.7.1-2
-    created: "2026-08-12T23:07:19.419757701Z"
+    created: "2026-08-13T20:16:06.653914604Z"
     description: A Helm chart for OpenClaw
     digest: ffb04edee4a1dd57356f304dff94236caa8baf4bc0106132bc977977413a3e7d
     home: https://github.com/openclaw/openclaw
@@ -131,7 +147,7 @@ entries:
     version: 0.1.4
   - apiVersion: v2
     appVersion: v2026.7.1-2
-    created: "2026-08-12T23:07:19.419296994Z"
+    created: "2026-08-13T20:16:06.653593462Z"
     description: A Helm chart for OpenClaw
     digest: b6f1b5c1a9759f910f140bb635fe64fa292456f50ae669044072b2a2d05c5f2e
     home: https://github.com/openclaw/openclaw
@@ -147,7 +163,7 @@ entries:
     version: 0.1.3
   - apiVersion: v2
     appVersion: v2026.7.1-2
-    created: "2026-08-12T23:07:19.418863959Z"
+    created: "2026-08-13T20:16:06.653272879Z"
     description: A Helm chart for OpenClaw
     digest: 7b6f5c134f45757f8b8f794ec828ad3d6dd12bb87bff0e72fc62e509702e5dcd
     home: https://github.com/openclaw/openclaw
@@ -163,7 +179,7 @@ entries:
     version: 0.1.2
   - apiVersion: v2
     appVersion: v2026.7.1-2
-    created: "2026-08-12T23:07:19.418372967Z"
+    created: "2026-08-13T20:16:06.652937306Z"
     description: A Helm chart for OpenClaw
     digest: e248efe8ba3ae25aff880e51d0c3f63c2cef8c260d11207b19736de032e3c69e
     home: https://github.com/openclaw/openclaw
@@ -177,4 +193,4 @@ entries:
     urls:
     - https://jacobeatsspam.github.io/k8s-openclaw/openclaw-0.1.1.tgz
     version: 0.1.1
-generated: "2026-08-12T23:07:19.417739604Z"
+generated: "2026-08-13T20:16:06.652297453Z"
