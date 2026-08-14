@@ -15,7 +15,7 @@ RUN set -exuo pipefail \
 	&& chmod 0755 /usr/local/bin/kubectl
 
 RUN set -exuo pipefail \
-	&& curl -SLo /usr/local/bin/tea https://dl.gitea.com/tea/v0.10.1/tea-v0.10.1-linux-amd64 \
+	&& curl -SLo /usr/local/bin/tea https://gitea.com/gitea/tea/releases/download/v0.15.1/tea-0.15.1-linux-amd64 \
 	&& chmod 755 /usr/local/bin/tea
 
 RUN set -exuo pipefail \
@@ -119,7 +119,6 @@ RUN set -exuo pipefail \
 	&& pnpm install -g --child-concurrency=1 @google/gemini-cli
 
 RUN set -exuo pipefail \
-	&& pipx install "git+https://github.com/truenas/api_client.git@TS-25.10.3" \
 	&& pipx install openai-whisper
 
 WORKDIR /app
