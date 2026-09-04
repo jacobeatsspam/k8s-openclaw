@@ -3,7 +3,7 @@ description: A Helm chart for OpenClaw
 home: https://github.com/openclaw/openclaw
 sources:
   - https://github.com/openclaw/openclaw
-appVersion: "v2026.7.1-2"
+appVersion: "v2026.9.1"
 
 apiVersion: v2
 type: application
