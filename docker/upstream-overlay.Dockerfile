@@ -77,6 +77,7 @@ RUN set -exuo pipefail \
 	&& install -d -o node -g node -m 0775 \
 		/home/node/.local/bin \
 		/home/node/.local/share/pnpm \
+		/home/node/.local/share/pnpm/bin \
 		/home/node/.local/share/pnpm/store \
 		/home/node/.local/share/pnpm/global \
 	&& chown -R node:node /home/node
@@ -86,7 +87,8 @@ ENV HOME="/home/node"
 ENV GOROOT="/usr/local/src/go"
 ENV GOPATH="${HOME}/go"
 ENV GOBIN="${GOPATH}/bin"
-ENV PATH="${HOME}/.local/bin:${GOBIN}:${PATH}"
+ENV PNPM_HOME="${HOME}/.local/share/pnpm"
+ENV PATH="${PNPM_HOME}/bin:${HOME}/.local/bin:${GOBIN}:${PATH}"
 ENV NODE_LLAMA_CPP_CMAKE_OPTION_GGML_CUDA=OFF
 ENV NODE_LLAMA_CPP_CMAKE_OPTION_GGML_HIP=OFF
 ENV NODE_LLAMA_CPP_CMAKE_OPTION_GGML_VULKAN=OFF
@@ -101,7 +103,8 @@ RUN set -exuo pipefail \
 	&& echo 'export GOROOT="/usr/local/src/go"' >> "${HOME}/.bashrc" \
 	&& echo 'export GOPATH="${HOME}/go"' >> "${HOME}/.bashrc" \
 	&& echo 'export GOBIN="${GOPATH}/bin"' >> "${HOME}/.bashrc" \
-	&& echo 'export PATH="${HOME}/.local/bin:${GOBIN}:${PATH}"' >> "${HOME}/.bashrc"
+	&& echo 'export PNPM_HOME="${HOME}/.local/share/pnpm"' >> "${HOME}/.bashrc" \
+	&& echo 'export PATH="${PNPM_HOME}/bin:${HOME}/.local/bin:${GOBIN}:${PATH}"' >> "${HOME}/.bashrc"
 
 RUN set -exuo pipefail \
 	&& go install golang.org/x/tools/cmd/goimports@latest \
@@ -112,7 +115,7 @@ RUN set -exuo pipefail \
 
 RUN set -exuo pipefail \
 	&& pnpm config set package-import-method copy \
-	&& pnpm config set global-bin-dir "${HOME}/.local/bin" \
+	&& pnpm config set global-bin-dir "${PNPM_HOME}/bin" \
 	&& pnpm install -g --child-concurrency=1 --allow-build=better-sqlite3 --allow-build=node-llama-cpp @tobilu/qmd \
 	&& pnpm install -g --child-concurrency=1 --allow-build=protobufjs @steipete/summarize \
 	&& pnpm install -g --child-concurrency=1 clawhub \
