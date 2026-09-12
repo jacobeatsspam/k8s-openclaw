@@ -131,17 +131,42 @@ RUN set -exuo pipefail \
 	&& curl -fsSL "https://codeload.github.com/rtk-ai/rtk/tar.gz/refs/tags/v0.44.1" -o "$tmpdir/rtk.tar.gz" \
 	&& tar -xzf "$tmpdir/rtk.tar.gz" -C "$tmpdir" \
 	&& cp -r "$tmpdir/rtk-0.44.1/openclaw" /app/extensions/rtk-rewrite \
-	&& jq '.openclaw.extensions=["./index.ts"]' "$tmpdir/rtk-0.44.1/openclaw/package.json" > /app/extensions/rtk-rewrite/package.json \
 	&& cp -r /app/extensions/rtk-rewrite /app/dist/extensions/rtk-rewrite \
+	&& jq '.main="index.js" | .openclaw.extensions=["./index.js"]' "$tmpdir/rtk-0.44.1/openclaw/package.json" > /app/dist/extensions/rtk-rewrite/package.json \
 	&& bun build /app/dist/extensions/rtk-rewrite/index.ts --target=node --outfile=/app/dist/extensions/rtk-rewrite/index.js \
 	&& rm /app/dist/extensions/rtk-rewrite/index.ts \
 	&& rm -rf "$tmpdir"
 
 RUN set -exuo pipefail \
+	&& node openclaw.mjs plugins install @openclaw/whatsapp \
 	&& node openclaw.mjs plugins install @openclaw/codex \
-	&& node openclaw.mjs plugins install clawhub:@openclaw/whatsapp \
-	&& node openclaw.mjs plugins install @openclaw/searxng-plugin \
-	&& node openclaw.mjs plugins install @openclaw/nextcloud-talk
+	&& node openclaw.mjs plugins install @openclaw/nextcloud-talk \
+	&& node openclaw.mjs plugins install @openclaw/searxng-plugin
+
+# Managed npm plugins import the host package through a package-local link.
+# Recreate those links directly, because `doctor --fix` is unable to enter
+# "maintenance mode" while assembling an image.
+RUN set -exuo pipefail \
+	&& for npm_root in "${HOME}/.openclaw/npm" "${HOME}/.openclaw/npm/projects"/*; do \
+		[[ -d "${npm_root}/node_modules" ]] || continue; \
+		for manifest in \
+			"${npm_root}"/node_modules/*/package.json \
+			"${npm_root}"/node_modules/@*/*/package.json; do \
+			[[ -f "${manifest}" ]] || continue; \
+			jq -e '([.peerDependencies.openclaw?, .dependencies.openclaw?] | any(type == "string" and length > 0))' "${manifest}" >/dev/null || continue; \
+			plugin_dir="$(dirname "${manifest}")"; \
+			link_path="${plugin_dir}/node_modules/openclaw"; \
+			mkdir -p "${plugin_dir}/node_modules"; \
+			if [[ -L "${link_path}" ]]; then \
+				ln -sfn /app "${link_path}"; \
+			elif [[ ! -e "${link_path}" ]]; then \
+				ln -s /app "${link_path}"; \
+			else \
+				echo "Refusing to replace non-symlink OpenClaw host dependency: ${link_path}" >&2; \
+				exit 1; \
+			fi; \
+		done; \
+	done
 
 EXPOSE 18789
 EXPOSE 9222 5900 6080
